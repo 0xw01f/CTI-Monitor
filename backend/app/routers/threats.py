@@ -1,16 +1,18 @@
 from datetime import datetime, timedelta
 
+import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy import String, func
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..database import get_db
 from ..models import SocialPost, Source, Threat
 from ..services.admin_auth import get_optional_admin, require_admin
 from ..services.identity import strip_tags
 from ..services.scorer import check_noise
 from ..services.screenshot import ensure_post_screenshot, evidence_exists
-from ..services.social_poster import generate_threat_post_text, publish_threat_to_bluesky
+from ..services.social_poster import publish_to_bluesky
 
 router = APIRouter(prefix="/api/threats", tags=["threats"])
 
@@ -214,6 +216,173 @@ def set_public_visibility_bulk(
 # X / Twitter post generation
 # ---------------------------------------------------------------------------
 
+import json as _json
+import re as _re
+
+_COUNTRY_PREFIX_RE = _re.compile(r"^\s*[\(\[]\s*[A-Z]{2}\s*[\)\]]\s*[-–:—]?\s*", _re.UNICODE)
+_HTML_TAG_RE = _re.compile(r"<[^>]+>")
+_MULTI_WS_RE = _re.compile(r"\s{2,}")
+
+
+def _clean_title(title: str) -> str:
+    return _COUNTRY_PREFIX_RE.sub("", title).strip()
+
+
+def _strip_html(text: str) -> str:
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = _MULTI_WS_RE.sub(" ", text)
+    return text.strip()
+
+
+def _is_printable(text: str) -> bool:
+    sample = text[:300]
+    ratio = sum(1 for c in sample if c.isprintable() or c in "\n\r\t") / max(len(sample), 1)
+    return ratio > 0.85
+
+
+def _safe_content(t: Threat) -> str:
+    """Return clean plain-text from the richest available source.
+
+    Priority:
+    1. full_post_text  — plain text already extracted by BeautifulSoup
+    2. full_post_html  — raw HTML saved in DB; strip tags here
+    3. content         — RSS summary (may also contain HTML)
+    """
+    candidates = [
+        t.full_post_text or "",
+        t.full_post_html or "",
+        t.content or "",
+    ]
+    for raw in candidates:
+        raw = raw.strip()
+        if not raw:
+            continue
+        cleaned = _strip_html(raw)
+        if len(cleaned) > 30 and _is_printable(cleaned):
+            return cleaned[:3000]
+    return ""
+
+
+_X_TYPE_HASHTAGS: dict[str, list[str]] = {
+    "database": ["#databreach"],
+    "credentials": ["#databreach", "#credentials"],
+    "stealer_logs": ["#infostealer"],
+    "access": ["#initialaccess"],
+    "source_code": ["#databreach"],
+}
+
+_X_TAG_HASHTAGS: dict[str, str] = {
+    "ransomware": "#ransomware",
+    "healthcare": "#healthcare",
+    "finance": "#finance",
+    "government": "#government",
+}
+
+
+def _flag_emoji(iso: str) -> str:
+    iso = (iso or "").upper().strip()
+    if len(iso) == 2 and iso.isalpha():
+        return "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in iso)
+    return "🌐"
+
+
+def _freshness(pub: datetime | None) -> str:
+    if not pub:
+        return "unknown"
+    pub_naive = pub.replace(tzinfo=None) if getattr(pub, "tzinfo", None) else pub
+    age_h = (datetime.utcnow() - pub_naive).total_seconds() / 3600
+    if age_h < 1:
+        return "<1h ago"
+    if age_h < 24:
+        return f"{int(age_h) + 1}h ago"
+    if age_h < 48:
+        return "1d ago"
+    return f"{int(age_h // 24)}d ago"
+
+
+def _fallback_tweet(t: Threat, flag: str, source_name: str, freshness: str) -> str:
+    """Minimal tweet body when GPT is unavailable (hashtags appended by caller)."""
+    title = _clean_title(t.title or "Unknown threat")[:80]
+    severity = (t.severity or "unknown").upper()
+    return f"{flag} {title}\n{severity} | {source_name} | {freshness}"
+
+
+async def _gpt_tweet(
+    t: Threat,
+    flag: str,
+    source_name: str,
+    freshness: str,
+    hashtags_str: str,
+) -> str:
+    """Ask GPT to write the complete tweet body, then append hashtags."""
+    content_sample = _safe_content(t)
+
+    if not settings.deepseek_api_key or not settings.deepseek_tweet_enabled:
+        return _fallback_tweet(t, flag, source_name, freshness)
+
+    # Reserve chars for the hashtag line (newline + hashtags)
+    hashtag_reserve = len(hashtags_str) + 1
+    body_limit = 280 - hashtag_reserve  # chars available for the tweet body
+
+    system_prompt = (
+        "You are a CTI analyst writing punchy, concise threat alerts for X (Twitter).\n"
+        "Rules:\n"
+        "- Write ONLY the tweet body (no hashtags — they are added separately).\n"
+        f"- Stay under {body_limit} characters total.\n"
+        "- Use hedged language: 'allegedly', 'reportedly', 'claimed'.\n"
+        "- Be terse: abbreviate where natural (e.g. 'DB' not 'database', 'org' not 'organization').\n"
+        "- Lead with the flag emoji and a short punchy headline, then 1-2 key detail lines.\n"
+        "- Include the source name, severity, and freshness naturally — no rigid bullet labels.\n"
+        "- Do NOT invent data not present in the post. If detail is unknown, omit it.\n"
+        '- Respond ONLY with a JSON object: {"tweet": "<tweet body text>"}'
+    )
+
+    user_prompt = (
+        f"Flag: {flag}\n"
+        f"Source: {source_name}\n"
+        f"Severity: {(t.severity or 'unknown').upper()}\n"
+        f"Freshness: {freshness}\n"
+        f"Type: {t.type or 'unknown'}\n"
+        f"Tags: {', '.join(t.tags or [])}\n"
+        f"Actor: {t.actor or 'unknown'}\n"
+        f"Country: {t.country or 'unknown'}\n"
+        f"Title: {_clean_title(t.title or '')}\n\n"
+        f"Post content:\n{content_sample}"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            resp = await client.post(
+                f"{settings.deepseek_base_url.rstrip('/')}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.deepseek_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": settings.deepseek_model,
+                    "temperature": 0.3,
+                    "max_tokens": 300,
+                    "response_format": {"type": "json_object"},
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                },
+            )
+            resp.raise_for_status()
+            data = _json.loads(resp.json()["choices"][0]["message"]["content"])
+            body = str(data.get("tweet", "")).strip()
+            if not body:
+                raise ValueError("empty tweet")
+            # Hard safety cap on the body (should not be needed if GPT follows rules)
+            if len(body) > body_limit:
+                # Find last sentence boundary within budget
+                cutoff = body[:body_limit].rfind(". ")
+                body = (body[: cutoff + 1] if cutoff > 20 else body[:body_limit]).rstrip()
+            return body
+    except Exception:
+        return _fallback_tweet(t, flag, source_name, freshness)
+
 
 @router.post("/{threat_id}/generate-x-post")
 async def generate_x_post(
@@ -229,7 +398,19 @@ async def generate_x_post(
     source = db.query(Source).filter(Source.id == t.source_id).first()
     source_name = source.name if source else "Unknown"
 
-    post_text = await generate_threat_post_text(t, source_name)
+    flag = _flag_emoji(t.country)
+    freshness = _freshness(t.published_at)
+
+    hashtags: set[str] = set(_X_TYPE_HASHTAGS.get(t.type or "", ["#databreach"]))
+    for tag in t.tags or []:
+        if tag in _X_TAG_HASHTAGS:
+            hashtags.add(_X_TAG_HASHTAGS[tag])
+    hashtags.add("#cti")
+    hashtags_str = " ".join(sorted(hashtags))
+
+    body = await _gpt_tweet(t, flag, source_name, freshness, hashtags_str)
+    post_text = f"{body}\n{hashtags_str}"
+
     screenshot_url = t.post_screenshot_path if evidence_exists(t.post_screenshot_path) else None
 
     return {
@@ -254,7 +435,22 @@ async def publish_bluesky(
     source = db.query(Source).filter(Source.id == t.source_id).first()
     source_name = source.name if source else "Unknown"
 
-    result = await publish_threat_to_bluesky(t, source_name)
+    flag = _flag_emoji(t.country)
+    freshness = _freshness(t.published_at)
+
+    hashtags: set[str] = set(_X_TYPE_HASHTAGS.get(t.type or "", ["#databreach"]))
+    for tag in t.tags or []:
+        if tag in _X_TAG_HASHTAGS:
+            hashtags.add(_X_TAG_HASHTAGS[tag])
+    hashtags.add("#cti")
+    hashtags_str = " ".join(sorted(hashtags))
+
+    body = await _gpt_tweet(t, flag, source_name, freshness, hashtags_str)
+    post_text = f"{body}\n{hashtags_str}"
+
+    screenshot_path = t.post_screenshot_path if evidence_exists(t.post_screenshot_path) else None
+
+    result = await publish_to_bluesky(post_text, image_path=screenshot_path)
 
     social = SocialPost(
         threat_id=t.id,
@@ -272,6 +468,6 @@ async def publish_bluesky(
     return {
         "ok": True,
         "post_url": result["post_url"],
-        "text": result.get("text", ""),
-        "char_count": len(result.get("text", "")),
+        "text": post_text,
+        "char_count": len(post_text),
     }
