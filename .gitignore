@@ -25,9 +25,13 @@ yarn-error.log*
 
 # Evidence / data
 backend/evidence/
+# Ignore screenshots/evidence images by default, but allow README assets
 *.png
 *.jpg
 *.jpeg
+!docs/assets/*.png
+!docs/assets/*.jpg
+!docs/assets/*.jpeg
 
 # IDE
 .vscode/

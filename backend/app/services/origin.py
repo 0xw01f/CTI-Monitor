@@ -921,17 +921,17 @@ def _extract_json_block(raw: str) -> dict | None:
     return None
 
 
-def _chatgpt_stage(text: str) -> dict | None:
-    """Optional OpenAI fallback. Returns a partial origin dict or None."""
-    if not getattr(settings, "openai_origin_enabled", False):
+def _deepseek_stage(text: str) -> dict | None:
+    """Optional DeepSeek fallback. Returns a partial origin dict or None."""
+    if not getattr(settings, "deepseek_origin_enabled", False):
         return None
-    if not getattr(settings, "openai_api_key", ""):
+    if not getattr(settings, "deepseek_api_key", ""):
         return None
 
     payload = {
-        "model": settings.openai_model,
-        "temperature": settings.openai_temperature,
-        "max_tokens": settings.openai_max_tokens,
+        "model": settings.deepseek_model,
+        "temperature": settings.deepseek_temperature,
+        "max_tokens": settings.deepseek_max_tokens,
         "response_format": {"type": "json_object"},
         "messages": [
             {
@@ -947,11 +947,11 @@ def _chatgpt_stage(text: str) -> dict | None:
         ],
     }
     try:
-        with httpx.Client(timeout=getattr(settings, "openai_timeout_seconds", 20)) as client:
+        with httpx.Client(timeout=getattr(settings, "deepseek_timeout_seconds", 20)) as client:
             resp = client.post(
-                f"{settings.openai_base_url.rstrip('/')}/chat/completions",
+                f"{settings.deepseek_base_url.rstrip('/')}/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {settings.openai_api_key}",
+                    "Authorization": f"Bearer {settings.deepseek_api_key}",
                     "Content-Type": "application/json",
                 },
                 json=payload,
@@ -979,7 +979,7 @@ def _chatgpt_stage(text: str) -> dict | None:
 
     return {
         "country": country,
-        "method": "chatgpt_fallback",
+        "method": "deepseek_fallback",
         "confidence": round(conf, 2),
         "evidence": str(parsed.get("evidence", "model inference"))[:280],
     }
@@ -1054,7 +1054,7 @@ def detect_victim_origin(raw_post: str) -> dict:
         ).as_dict()
 
     # LLM fallback (if enabled and no heuristic signal found)
-    llm = _chatgpt_stage(text)
+    llm = _deepseek_stage(text)
     if llm:
         return llm
 

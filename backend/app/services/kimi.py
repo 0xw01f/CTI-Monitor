@@ -1,5 +1,5 @@
 """
-Kimi K2 post classifier.
+DeepSeek post classifier (replaces Kimi K2).
 
 classify_post(text) → {"type": str, "confidence": float}
 Types: database | access | stealer | combo | other
@@ -15,8 +15,6 @@ from ..config import settings
 
 logger = logging.getLogger(__name__)
 
-_BASE_URL = "https://kimi-k2.ai/api/v1/chat/completions"
-_MODEL = "kimi-k2-0905"
 _FALLBACK: dict = {"type": "other", "confidence": 0.0}
 _VALID_TYPES = {"database", "access", "stealer", "combo", "other"}
 
@@ -45,11 +43,11 @@ def _extract_json(raw: str) -> dict | None:
 
 
 async def classify_post(text: str) -> dict:
-    if not settings.kimi_api_key:
+    if not settings.deepseek_api_key or not settings.deepseek_classify_enabled:
         return _FALLBACK
 
     payload = {
-        "model": _MODEL,
+        "model": settings.deepseek_model,
         "messages": [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": _USER_TMPL.format(text=text[:4000])},
@@ -58,25 +56,29 @@ async def classify_post(text: str) -> dict:
         "max_tokens": 20,
     }
     headers = {
-        "Authorization": f"Bearer {settings.kimi_api_key}",
+        "Authorization": f"Bearer {settings.deepseek_api_key}",
         "Content-Type": "application/json",
     }
 
     for attempt in range(3):  # 1 attempt + 2 retries
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(_BASE_URL, headers=headers, json=payload)
+                resp = await client.post(
+                    f"{settings.deepseek_base_url.rstrip('/')}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
                 # 401/403 = bad key — no point retrying
                 if resp.status_code in (401, 403):
                     logger.warning(
-                        "Kimi classify: auth error %d — check KIMI_API_KEY in .env",
+                        "DeepSeek classify: auth error %d — check DEEPSEEK_API_KEY in .env",
                         resp.status_code,
                     )
                     return _FALLBACK
                 resp.raise_for_status()
                 data = resp.json()
         except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.RequestError) as exc:
-            logger.warning("Kimi classify attempt %d failed: %s", attempt + 1, exc)
+            logger.warning("DeepSeek classify attempt %d failed: %s", attempt + 1, exc)
             if attempt < 2:
                 continue
             return _FALLBACK

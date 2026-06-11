@@ -12,17 +12,17 @@ class Settings(BaseSettings):
     use_tor: bool = False
     tor_proxy_url: str = "socks5://tor:9050"
 
-    openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
-    openai_base_url: str = "https://api.openai.com/v1"
-    openai_temperature: float = 0.1
-    openai_top_p: float = 1.0
-    openai_max_tokens: int = 120
-    openai_timeout_seconds: float = 20.0
-    openai_origin_enabled: bool = True
-
-    # Kimi K2 classifier
-    kimi_api_key: str = ""
+    # DeepSeek (replaces OpenAI + Kimi)
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-v4-flash"
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_temperature: float = 0.1
+    deepseek_top_p: float = 1.0
+    deepseek_max_tokens: int = 120
+    deepseek_timeout_seconds: float = 20.0
+    deepseek_origin_enabled: bool = True
+    deepseek_classify_enabled: bool = True
+    deepseek_tweet_enabled: bool = True
 
     # Discord webhook for alerts (critical/high threats)
     discord_webhook_url: str = ""

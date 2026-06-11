@@ -316,7 +316,7 @@ async def _gpt_tweet(
     """Ask GPT to write the complete tweet body, then append hashtags."""
     content_sample = _safe_content(t)
 
-    if not settings.openai_api_key:
+    if not settings.deepseek_api_key or not settings.deepseek_tweet_enabled:
         return _fallback_tweet(t, flag, source_name, freshness)
 
     # Reserve chars for the hashtag line (newline + hashtags)
@@ -352,13 +352,13 @@ async def _gpt_tweet(
     try:
         async with httpx.AsyncClient(timeout=25.0) as client:
             resp = await client.post(
-                f"{settings.openai_base_url.rstrip('/')}/chat/completions",
+                f"{settings.deepseek_base_url.rstrip('/')}/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {settings.openai_api_key}",
+                    "Authorization": f"Bearer {settings.deepseek_api_key}",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": settings.openai_model,
+                    "model": settings.deepseek_model,
                     "temperature": 0.3,
                     "max_tokens": 300,
                     "response_format": {"type": "json_object"},
