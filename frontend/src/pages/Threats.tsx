@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow, format } from 'date-fns'
 import { X, ChevronRight, ShieldCheck, List, LayoutGrid, Twitter, Copy, Download, Check, Trash2, Eye, EyeOff } from 'lucide-react'
-import { getThreats, getThreat, generateXPost, publishBluesky, deleteThreat, setThreatVisibility, setThreatVisibilityBulk } from '../api/client'
+import { getThreats, getThreat, generateXPost, deleteThreat, setThreatVisibility, setThreatVisibilityBulk } from '../api/client'
 import { getSev, getTypeBadge, TYPE_KEYS, getTypeMeta } from '../lib/severity'
 import { countryLabel } from '../lib/countries'
 import type { Threat, ThreatListResponse } from '../types'
@@ -389,9 +389,6 @@ function ThreatDetail({
   const [copied, setCopied] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [blueskyLoading, setBlueskyLoading] = useState(false)
-  const [blueskyUrl, setBlueskyUrl] = useState<string | null>(null)
-  const [blueskyError, setBlueskyError] = useState<string | null>(null)
 
   const handleGenerateX = async () => {
     setXLoading(true)
@@ -435,23 +432,6 @@ function ThreatDetail({
 
   const handleTweet = () => {
     window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(xText)}`, '_blank')
-  }
-
-  const handlePublishBluesky = async () => {
-    setBlueskyLoading(true)
-    setBlueskyError(null)
-    try {
-      const result = await publishBluesky(threat.id)
-      if (result.ok && result.post_url) {
-        setBlueskyUrl(result.post_url)
-      } else {
-        setBlueskyError('Publish failed')
-      }
-    } catch (err: any) {
-      setBlueskyError(err?.response?.data?.detail ?? 'Publish failed')
-    } finally {
-      setBlueskyLoading(false)
-    }
   }
 
   return (
@@ -583,31 +563,8 @@ function ThreatDetail({
                       <Twitter size={11} />
                       Open X
                     </button>
-                    <button
-                      onClick={handlePublishBluesky}
-                      disabled={blueskyLoading}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-600/20 border border-sky-600/40 text-[11px] text-sky-400 hover:bg-sky-600/30 transition-colors disabled:opacity-50"
-                    >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.99C2.566.95 1.561 1.17.727 1.6c-.904.47-1.06 1.615-.935 2.32.195 1.09 1.652 4.29 2.756 5.566 1.086 1.254 2.559 2.358 4.28 2.358 1.18 0 2.311-.49 3.17-1.32.86.83 1.99 1.32 3.17 1.32 1.721 0 3.194-1.104 4.28-2.358 1.104-1.276 2.561-4.476 2.756-5.566.125-.705-.03-1.85-.935-2.32-.834-.43-1.839-.65-3.475.21-2.752 1.937-5.711 5.876-6.798 7.99z"/>
-                      </svg>
-                      {blueskyLoading ? 'Publishing…' : 'Publish Bluesky'}
-                    </button>
                   </div>
                 </div>
-                {blueskyUrl && (
-                  <a
-                    href={blueskyUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] text-sky-400 hover:text-sky-300 underline truncate block"
-                  >
-                    Posted: {blueskyUrl}
-                  </a>
-                )}
-                {blueskyError && (
-                  <p className="text-[10px] text-red-400">{blueskyError}</p>
-                )}
               </div>
 
               {/* Screenshot side */}

@@ -69,7 +69,6 @@ class Threat(Base):
     source = relationship("Source", back_populates="threats")
     links = relationship("ThreatLink", back_populates="threat", cascade="all, delete-orphan")
     graph_entities = relationship("ThreatEntity", back_populates="threat", cascade="all, delete-orphan")
-    social_posts = relationship("SocialPost", back_populates="threat", cascade="all, delete-orphan")
 
     __table_args__ = (UniqueConstraint("source_id", "external_id", name="uq_source_external"),)
 
@@ -217,19 +216,3 @@ class ActorRelation(Base):
     related_actor = relationship("Actor", foreign_keys=[related_actor_id])
 
     __table_args__ = (UniqueConstraint("actor_id", "related_actor_id", "relation_type", name="uq_actor_relation"),)
-
-
-class SocialPost(Base):
-    """Tracks social media posts published for a given threat."""
-
-    __tablename__ = "social_posts"
-
-    id = Column(Integer, primary_key=True, index=True)
-    threat_id = Column(Integer, ForeignKey("threats.id"), nullable=False, index=True)
-    platform = Column(String, nullable=False)  # bluesky, x
-    post_url = Column(String, nullable=True)
-    status = Column(String, default="published")  # published, failed
-    detail = Column(Text, nullable=True)
-    created_at = Column(DateTime, server_default=func.now())
-
-    threat = relationship("Threat", back_populates="social_posts")
