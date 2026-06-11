@@ -23,6 +23,7 @@ from .kimi import classify_post
 from .origin import detect_victim_origin
 from .proxy import require_proxy
 from .scorer import build_dedup_key, check_noise, classify_threat
+from .social_poster import publish_threat_to_bluesky
 
 # Maps Kimi output types to internal scorer types
 _KIMI_TO_INTERNAL: dict[str, str] = {
@@ -639,6 +640,40 @@ async def process_entry(entry: feedparser.FeedParserDict, source: Source, db):
     return threat
 
 
+def _should_auto_post_to_bluesky(severity: str | None) -> bool:
+    if not settings.bluesky_enabled:
+        return False
+    allowed = {s.strip().lower() for s in (settings.bluesky_auto_post_severities or "").split(",") if s.strip()}
+    return (severity or "").lower() in allowed
+
+
+async def _auto_publish_bluesky(threat: Threat) -> None:
+    """Auto-publish a threat to Bluesky after it has been committed."""
+    from ..models import SocialPost
+
+    source_name = threat.source.name if threat.source else "Unknown"
+    result = await publish_threat_to_bluesky(threat, source_name)
+
+    db = SessionLocal()
+    try:
+        social = SocialPost(
+            threat_id=threat.id,
+            platform="bluesky",
+            post_url=result.get("post_url"),
+            status="published" if result["ok"] else "failed",
+            detail=result.get("detail"),
+        )
+        db.add(social)
+        db.commit()
+    finally:
+        db.close()
+
+    if result["ok"]:
+        logger.info("Auto-posted threat #%d to Bluesky: %s", threat.id, result.get("post_url"))
+    else:
+        logger.warning("Auto-post to Bluesky failed for threat #%d: %s", threat.id, result.get("detail"))
+
+
 async def poll_source(source_id: int) -> None:
     db = SessionLocal()
     try:
@@ -667,6 +702,8 @@ async def poll_source(source_id: int) -> None:
 
         for threat in new_threats:
             await send_discord_threat_alert(threat)
+            if _should_auto_post_to_bluesky(threat.severity):
+                await _auto_publish_bluesky(threat)
 
     except Exception as exc:
         logger.error(f"Error polling source #{source_id}: {exc}")
