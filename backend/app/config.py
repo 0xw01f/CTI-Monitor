@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # XenForo auth cookie value for authenticated RSS feeds (e.g. breached.st)
     breached_xf_user_cookie: str = ""
 
+    # Bluesky auto-posting
+    bluesky_enabled: bool = False
+    bluesky_handle: str = ""
+    bluesky_app_password: str = ""
+
     # Admin authentication (for private admin dashboard)
     admin_auth_enabled: bool = True
     admin_username: str = "admin"

@@ -39,6 +39,9 @@ export const setThreatVisibilityBulk = async (ids: number[], isPublic: boolean):
 export const generateXPost = async (id: number): Promise<XPostResult> =>
   (await api.post(`/threats/${id}/generate-x-post`)).data
 
+export const publishBluesky = async (id: number): Promise<XPostResult & { post_url?: string }> =>
+  (await api.post(`/threats/${id}/publish-bluesky`)).data
+
 // ── Actors ─────────────────────────────────────────────────────────────────
 export const pollAllSources = async (): Promise<ApiStatus> =>
   (await api.post('/sources/poll-all')).data

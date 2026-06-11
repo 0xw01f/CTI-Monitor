@@ -7,11 +7,12 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..database import get_db
-from ..models import Source, Threat
+from ..models import SocialPost, Source, Threat
 from ..services.admin_auth import get_optional_admin, require_admin
 from ..services.identity import strip_tags
 from ..services.scorer import check_noise
 from ..services.screenshot import ensure_post_screenshot, evidence_exists
+from ..services.social_poster import publish_to_bluesky
 
 router = APIRouter(prefix="/api/threats", tags=["threats"])
 
@@ -417,4 +418,56 @@ async def generate_x_post(
         "text": post_text,
         "char_count": len(post_text),
         "screenshot_url": screenshot_url,
+    }
+
+
+@router.post("/{threat_id}/publish-bluesky")
+async def publish_bluesky(
+    threat_id: int,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
+    """Generate and publish a Bluesky alert for a threat entry."""
+    t = db.query(Threat).filter(Threat.id == threat_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    source = db.query(Source).filter(Source.id == t.source_id).first()
+    source_name = source.name if source else "Unknown"
+
+    flag = _flag_emoji(t.country)
+    freshness = _freshness(t.published_at)
+
+    hashtags: set[str] = set(_X_TYPE_HASHTAGS.get(t.type or "", ["#databreach"]))
+    for tag in t.tags or []:
+        if tag in _X_TAG_HASHTAGS:
+            hashtags.add(_X_TAG_HASHTAGS[tag])
+    hashtags.add("#cti")
+    hashtags_str = " ".join(sorted(hashtags))
+
+    body = await _gpt_tweet(t, flag, source_name, freshness, hashtags_str)
+    post_text = f"{body}\n{hashtags_str}"
+
+    screenshot_path = t.post_screenshot_path if evidence_exists(t.post_screenshot_path) else None
+
+    result = await publish_to_bluesky(post_text, image_path=screenshot_path)
+
+    social = SocialPost(
+        threat_id=t.id,
+        platform="bluesky",
+        post_url=result.get("post_url"),
+        status="published" if result["ok"] else "failed",
+        detail=result.get("detail"),
+    )
+    db.add(social)
+    db.commit()
+
+    if not result["ok"]:
+        raise HTTPException(status_code=502, detail=result["detail"])
+
+    return {
+        "ok": True,
+        "post_url": result["post_url"],
+        "text": post_text,
+        "char_count": len(post_text),
     }
