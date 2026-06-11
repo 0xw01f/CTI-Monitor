@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
+import DisclaimerBanner from './components/DisclaimerBanner'
 import Dashboard from './pages/Dashboard'
 import Threats from './pages/Threats'
 import Actors from './pages/Actors'
@@ -20,6 +21,7 @@ function PublicShell() {
       <Sidebar mode="public" />
       <div className="flex-1 min-w-0 flex flex-col">
         <TopBar search={search} onSearch={setSearch} allowRefresh={false} />
+        <DisclaimerBanner />
         <main className="flex-1 overflow-auto p-4">
           <Routes>
             <Route path="/dashboard" element={<Dashboard />} />
@@ -77,6 +79,7 @@ function AdminShell() {
       />
       <div className="flex-1 min-w-0 flex flex-col">
         <TopBar search={search} onSearch={setSearch} allowRefresh />
+        <DisclaimerBanner />
         <main className="flex-1 overflow-auto p-4">
           <Routes>
             <Route path="/admin/dashboard" element={<Dashboard />} />

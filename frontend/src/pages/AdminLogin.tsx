@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Shield, KeyRound } from 'lucide-react'
+import { Shield, KeyRound, AlertTriangle } from 'lucide-react'
 import { adminLogin } from '../api/client'
 import { setAdminToken } from '../lib/adminAuth'
 
@@ -36,7 +36,15 @@ export default function AdminLogin() {
 
   return (
     <div className="min-h-screen bg-[#080810] text-slate-200 grid place-items-center p-4">
-      <form onSubmit={onSubmit} className="w-full max-w-md bg-[#0d0d16] border border-[#1a1a28] p-6 space-y-4">
+      <div className="w-full max-w-md space-y-3">
+        <div className="bg-amber-950/20 border border-amber-900/30 px-3 py-2 rounded">
+          <p className="flex items-center justify-center gap-1.5 text-[10px] text-amber-400/80 text-center">
+            <AlertTriangle size={10} className="shrink-0" />
+            CTI Monitor relies on automated parsing and AI enrichment — data may contain errors,
+            omissions, or incorrect classifications. Always verify before acting.
+          </p>
+        </div>
+        <form onSubmit={onSubmit} className="bg-[#0d0d16] border border-[#1a1a28] p-6 space-y-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-cyan-300">
             <Shield size={16} />
@@ -88,6 +96,7 @@ export default function AdminLogin() {
           {loading ? 'Signing in...' : 'Sign in'}
         </button>
       </form>
+      </div>
     </div>
   )
 }

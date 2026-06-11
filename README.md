@@ -3,6 +3,8 @@
 
 A self-hosted threat intelligence workspace that automates the collection, enrichment, and analysis of cyber threat data from open sources.
 
+> **Disclaimer:** CTI Monitor relies on automated parsing and AI enrichment. Data may contain errors, omissions, or incorrect classifications. Always verify information before acting on it.
+
 ---
 
 ## Highlights
