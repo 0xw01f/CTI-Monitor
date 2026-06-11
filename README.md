@@ -153,6 +153,7 @@ CTI Monitor refuses to fetch sources without a proxy (Tor or generic), but perfe
 - [ ] REST API token authentication for integrations
 - [ ] Unit and integration test suite
 - [ ] Dark mode toggle for public dashboard
+- [ ] NER pipeline (GLiNER + spaCy) for precise entity extraction and threat classification
 
 ---
 
