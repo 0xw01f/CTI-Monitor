@@ -1,0 +1,122 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cti-monitor"
+version = "0.1.0"
+description = "Self-hosted cyber threat intelligence workspace"
+readme = "../README.md"
+requires-python = ">=3.11"
+license = {text = "CC-BY-NC-4.0"}
+authors = [
+    {name = "CTI Monitor Contributors"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+dependencies = [
+    "fastapi==0.104.1",
+    "uvicorn[standard]==0.24.0",
+    "sqlalchemy==2.0.23",
+    "psycopg2-binary==2.9.9",
+    "feedparser==6.0.10",
+    "httpx==0.25.2",
+    "apscheduler==3.10.4",
+    "pydantic-settings==2.1.0",
+    "python-dateutil==2.8.2",
+    "playwright==1.52.0",
+    "geotext==0.4.0",
+    "langdetect==1.0.9",
+    "beautifulsoup4==4.12.3",
+    "socksio==1.0.0",
+    "Pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    "httpx>=0.25.0",
+    "faker>=24.0.0",
+    "mypy>=1.9.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/cti-monitor/cti-monitor"
+Repository = "https://github.com/cti-monitor/cti-monitor"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+exclude = [
+    "venv",
+    "__pycache__",
+    "evidence",
+    ".git",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # Pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "ASYNC", # flake8-async
+    "S",   # flake8-bandit
+    "N",   # pep8-naming
+]
+ignore = [
+    "S101",   # assert used (permitted in FastAPI patterns)
+    "S311",   # pseudo-random generators (jitter/sleep ok)
+    "S603",   # subprocess call (not used, but triggers on shlex)
+    "S607",   # start-process-with-partial-path
+    "B008",   # FastAPI idiomatic: Depends() in default args
+    "SIM105", # try/except/pass is intentional for Playwright/browser robustness
+    "SIM103", # minor condition simplifications
+    "S110",   # try/except/pass is intentional for parsing fallbacks
+    "E402",   # local module-level imports used for organization
+    "E741",   # ambiguous variable names in comprehensions
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_ignores = true
+exclude = [
+    "venv",
+    "__pycache__",
+    "evidence",
+    "tests",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --tb=short --cov=app --cov-report=term-missing"

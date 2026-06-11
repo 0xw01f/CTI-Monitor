@@ -1,0 +1,71 @@
+services:
+  tor:
+    image: dperson/torproxy:latest
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ctimonitor
+      POSTGRES_USER: cti
+      POSTGRES_PASSWORD: ctipass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cti -d ctimonitor"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - evidence:/app/evidence
+    environment:
+      DATABASE_URL: postgresql://cti:ctipass@postgres:5432/ctimonitor
+      POLL_INTERVAL: "${POLL_INTERVAL:-1200}"
+      POLL_JITTER: "${POLL_JITTER:-600}"
+      BOOTSTRAP_SOURCE_NAME: "primary-feed"
+      BOOTSTRAP_SOURCE_URL: "${BOOTSTRAP_SOURCE_URL:-}"
+      PROXY_URL: "${PROXY_URL:-}"
+      USE_TOR: "${USE_TOR:-false}"
+      TOR_PROXY_URL: "${TOR_PROXY_URL:-socks5://tor:9050}"
+      BREACHED_XF_USER_COOKIE: "${BREACHED_XF_USER_COOKIE:-}"
+      KIMI_API_KEY: "${KIMI_API_KEY:-}"
+      DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4o-mini}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
+      OPENAI_TEMPERATURE: "${OPENAI_TEMPERATURE:-0.1}"
+      OPENAI_TOP_P: "${OPENAI_TOP_P:-1.0}"
+      OPENAI_MAX_TOKENS: "${OPENAI_MAX_TOKENS:-120}"
+      OPENAI_TIMEOUT_SECONDS: "${OPENAI_TIMEOUT_SECONDS:-20}"
+      OPENAI_ORIGIN_ENABLED: "${OPENAI_ORIGIN_ENABLED:-true}"
+      ADMIN_AUTH_ENABLED: "${ADMIN_AUTH_ENABLED:-true}"
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
+      ADMIN_PASSWORD_HASH: "${ADMIN_PASSWORD_HASH:-}"
+      ADMIN_TOKEN_SECRET: "${ADMIN_TOKEN_SECRET:-}"
+      ADMIN_TOKEN_TTL_MINUTES: "${ADMIN_TOKEN_TTL_MINUTES:-720}"
+      ADMIN_TOTP_SECRET: "${ADMIN_TOTP_SECRET:-}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-*}"
+      INSECURE_SSL: "${INSECURE_SSL:-false}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      tor:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  evidence:
